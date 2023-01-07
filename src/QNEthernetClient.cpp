@@ -96,7 +96,12 @@ int EthernetClient::connect(const ip_addr_t *ipaddr, uint16_t port, bool wait) {
     elapsedMillis timer;
     while (!conn_->connected && timer < connTimeout_) {
       // NOTE: Depends on Ethernet loop being called from yield()
-      yield();
+      if(yield_thread_enable) {
+	    yield_thread();
+      }
+      else {
+	    yield();
+      }
     }
     if (!conn_->connected) {
       close();
@@ -159,6 +164,14 @@ bool EthernetClient::isNoDelay() {
   return ((state->pcb->flags & TF_NODELAY) != 0);
 }
 
+void EthernetClient::setYieldThread(bool enable) {
+  yield_thread_enable = enable;
+}
+
+void EthernetClient::yield_thread() {
+  __asm volatile("svc %0" : : "i"(33));
+}
+
 void EthernetClient::stop() {
   close(true);
 }
@@ -193,7 +206,12 @@ void EthernetClient::close(bool wait) {
         elapsedMillis timer;
         while (conn_->connected && timer < connTimeout_) {
           // NOTE: Depends on Ethernet loop being called from yield()
-          yield();
+		  if(yield_thread_enable) {
+			yield_thread();
+		  }
+		  else {
+			yield();
+		  }
         }
       }
     }

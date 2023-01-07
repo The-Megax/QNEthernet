@@ -57,6 +57,9 @@ class EthernetClient : public Client {
   explicit operator bool() final;
 
   void setConnectionTimeout(uint16_t timeout);
+  
+  // Yield thread set
+  void setYieldThread(bool enable);
 
   void stop() final;
 
@@ -148,6 +151,10 @@ class EthernetClient : public Client {
       // conn_->connected.
 
   friend class EthernetServer;
+
+  // Thread yield fix
+  void yield_thread();
+  bool yield_thread_enable = false;
 };
 
 }  // namespace network
