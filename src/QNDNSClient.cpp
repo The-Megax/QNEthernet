@@ -81,9 +81,22 @@ bool DNSClient::getHostByName(const char *hostname, IPAddress &ip,
   elapsedMillis timer;
   while (!found && timer < timeout) {
     // NOTE: Depends on Ethernet loop being called from yield()
-    yield();
+	if(yield_thread_enable) {
+      yield_thread();
+	}
+	else {
+      yield();
+	}
   }
   return found;
+}
+
+void DNSClient::setYieldThread(bool enable) {
+  yield_thread_enable = enable;
+}
+
+void DNSClient::yield_thread() {
+  __asm volatile("svc %0" : : "i"(33));
 }
 
 }  // namespace network
