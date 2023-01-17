@@ -53,6 +53,9 @@ class DNSClient final {
   static bool getHostByName(const char *hostname, IPAddress &ip,
                             uint32_t timeout);
 
+  // Yield thread set
+  static void setYieldThread(bool enable);
+
  private:
   // DNS request state.
   struct Request final {
@@ -66,6 +69,10 @@ class DNSClient final {
 
   static void dnsFoundFunc(const char *name, const ip_addr_t *ipaddr,
                            void *callback_arg);
+
+  // Thread yield fix
+  static void yield_thread();
+  static bool yield_thread_enable = false;
 };
 
 }  // namespace network
