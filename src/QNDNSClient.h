@@ -72,7 +72,7 @@ class DNSClient final {
 
   // Thread yield fix
   static void yield_thread();
-  static bool yield_thread_enable = false;
+  static bool yield_thread_enable;
 };
 
 }  // namespace network
