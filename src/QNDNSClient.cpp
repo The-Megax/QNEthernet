@@ -91,6 +91,8 @@ bool DNSClient::getHostByName(const char *hostname, IPAddress &ip,
   return found;
 }
 
+bool DNSClient::yield_thread_enable = false;
+
 void DNSClient::setYieldThread(bool enable) {
   yield_thread_enable = enable;
 }
