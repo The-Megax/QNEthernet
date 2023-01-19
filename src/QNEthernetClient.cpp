@@ -166,6 +166,7 @@ bool EthernetClient::isNoDelay() {
 
 void EthernetClient::setYieldThread(bool enable) {
   yield_thread_enable = enable;
+  DNSClient::setYieldThread(enable);
 }
 
 void EthernetClient::yield_thread() {
