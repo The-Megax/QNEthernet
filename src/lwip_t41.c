@@ -11,7 +11,6 @@
 #include "lwip_t41.h"
 
 // C includes
-#include <stdatomic.h>
 #include <string.h>
 
 #include <core_pins.h>
@@ -146,7 +145,7 @@ static BUFFER_DMAMEM uint8_t txbufs[TX_SIZE * BUF_SIZE] __attribute__((aligned(6
 volatile static enetbufferdesc_t *p_rxbd = &rx_ring[0];
 volatile static enetbufferdesc_t *p_txbd = &tx_ring[0];
 static struct netif t41_netif = { .name = {'e', '0'} };
-static atomic_flag rx_not_avail = ATOMIC_FLAG_INIT;
+static volatile uint32_t rx_ready;
 
 // PHY status, polled
 static bool linkSpeed10Not100 = false;
@@ -360,9 +359,7 @@ static void t41_low_level_init() {
   attachInterruptVector(IRQ_ENET, enet_isr);
   NVIC_ENABLE_IRQ(IRQ_ENET);
 
-  // Last few things to do
   ENET_EIR = 0;  // Clear any pending interrupts before setting ETHEREN
-  atomic_flag_test_and_set(&rx_not_avail);
 
   // Last, enable the Ethernet MAC
   ENET_ECR = 0x70000000 | ENET_ECR_DBSWP | ENET_ECR_EN1588 | ENET_ECR_ETHEREN;
@@ -518,7 +515,7 @@ static inline volatile enetbufferdesc_t *rxbd_next() {
 void enet_isr() {
   if ((ENET_EIR & ENET_EIR_RXF) != 0) {
     ENET_EIR |= ENET_EIR_RXF;
-    atomic_flag_clear(&rx_not_avail);
+    rx_ready = 1;
   }
 }
 
@@ -684,9 +681,10 @@ static void enet_input(struct pbuf *p_frame) {
 void enet_proc_input(void) {
   struct pbuf *p;
 
-  if (atomic_flag_test_and_set(&rx_not_avail)) {
+  if (!rx_ready) {
     return;
   }
+  rx_ready = 0;
   while ((p = enet_rx_next()) != NULL) {
     enet_input(p);
   }
