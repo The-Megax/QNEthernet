@@ -1,9 +1,12 @@
-// SPDX-FileCopyrightText: (c) 2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2022-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // CircularBuffer.h defines a circular buffer.
 //
 // This file is part of the QNEthernet library.
+
+#ifndef CIRCULARBUFFER_H_
+#define CIRCULARBUFFER_H_
 
 #include <cstddef>
 #include <memory>
@@ -72,3 +75,5 @@ class CircularBuffer {
   size_t head_;
   size_t tail_;
 };
+
+#endif  // CIRCULARBUFFER_H_

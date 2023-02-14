@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (c) 2021-2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2021-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // QNEthernetServer.cpp contains the EthernetServer implementation.
@@ -61,7 +61,7 @@ bool EthernetServer::begin(uint16_t port, bool reuse) {
   }
 
   // Only change the port if listening was successful
-  listening_ = internal::ConnectionManager::instance().listen(port_, reuse);
+  listening_ = internal::ConnectionManager::instance().listen(port, reuse);
   if (listening_) {
     port_ = port;
     reuse_ = reuse;

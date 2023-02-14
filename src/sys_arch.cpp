@@ -18,7 +18,9 @@ extern int errno;
 #include <pgmspace.h>
 
 extern "C" {
+
 #include "lwip/arch.h"
+#include "lwip/debug.h"
 #include "lwip/opt.h"
 #ifdef LWIP_DEBUG
 #include "lwip/err.h"
@@ -30,7 +32,7 @@ extern volatile uint32_t systick_millis_count;
 // See: lwip/mem.c
 static DMAMEM LWIP_DECLARE_MEMORY_ALIGNED(the_heap,
                                           LWIP_MEM_ALIGN_SIZE(MEM_SIZE) +
-                                              2*LWIP_MEM_ALIGN_SIZE(8));
+                                              2U*LWIP_MEM_ALIGN_SIZE(8U));
 void *ram_heap = the_heap;
 
 u32_t sys_now(void) {
@@ -66,12 +68,17 @@ const char *lwip_strerr(err_t err) {
   // # digits = log_10(2^bits) = bits * log_10(2)
   constexpr size_t kDigits = sizeof(err_t)*8*kLog2 + 1;  // Add 1 for ceiling
   constexpr char kPrefix[]{"err "};
-  static char buf[sizeof(kPrefix) + kDigits];  // Includes the NUL
+  static char buf[sizeof(kPrefix) + kDigits + 1];  // Includes the NUL and sign
   snprintf(buf, sizeof(buf), "%s%d", kPrefix, err);
   return buf;
 }
 #endif  // LWIP_DEBUG
+
 }  // extern "C"
+
+// --------------------------------------------------------------------------
+//  stdio
+// --------------------------------------------------------------------------
 
 // The user program can set this to something initialized. For example,
 // `Serial`, after `Serial.begin(speed)`.
@@ -85,6 +92,7 @@ Print *volatile stderrPrint = nullptr;
 }  // namespace qindesign
 
 extern "C" {
+
 // Define this function so that printf works; parts of lwIP may use printf.
 // See: https://forum.pjrc.com/threads/28473-Quick-Guide-Using-printf()-on-Teensy-ARM
 // Note: Can't define as weak by default because we don't know which `_write`
@@ -122,7 +130,13 @@ int _write(int file, const void *buf, size_t len) {
   return out->write((const uint8_t *)buf, len);
 }
 
+// --------------------------------------------------------------------------
+//  Core Locking
+// --------------------------------------------------------------------------
+
 #if SYS_LIGHTWEIGHT_PROT
+typedef uint32_t sys_prot_t;
+
 sys_prot_t sys_arch_protect(void) {
   return 0;
 }
@@ -130,4 +144,11 @@ sys_prot_t sys_arch_protect(void) {
 void sys_arch_unprotect(sys_prot_t pval) {
 }
 #endif  // SYS_LIGHTWEIGHT_PROT
+
+void sys_check_core_locking(void) {
+  uint32_t ipsr;
+  __asm__ volatile("mrs %0, ipsr\n" : "=r" (ipsr) ::);
+  LWIP_ASSERT("Function called from interrupt context", (ipsr == 0));
+}
+
 }  // extern "C"

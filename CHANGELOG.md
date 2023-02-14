@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.18.0]
 
 ### Added
 * Added a "Notes on ordering and timing" section to the README.
@@ -17,6 +17,11 @@ and this project adheres to
   to complete.
 * Added `EthernetUDP::beginWithReuse()` and `beginMulticastWithReuse()`
   functions to replace the corresponding begin-with-_reuse_-parameter versions.
+* Added printing the link speed and duplex in the IPerfServer example.
+* Added an "Asynchronous use is not supported" section to the README.
+* New `EthernetClass::onInterfaceStatus(callback)` and `interfaceStatus()`
+  functions for tracking the network interface status.
+* Added a check to ensure lwIP isn't called from an interrupt context.
 
 ### Changed
 * Wrapped `LWIP_MDNS_RESPONDER` option in `lwipopts.h` with `#ifndef` and added
@@ -43,6 +48,11 @@ and this project adheres to
   the hostname changed.
 * Changed both `EthernetServer` and `EthernetUDP` to disallow copying but
   allow moving.
+* Changed raw frame support to be excluded by default. This changed the
+  `QNETHERNET_DISABLE_RAW_FRAME_SUPPORT` macro to
+  `QNETHERNET_ENABLE_RAW_FRAME_SUPPORT`.
+* Changed `tcp_pcb` member accesses to use appropriate TCP API function calls.
+  This fixes use of the altcp API.
 
 ### Removed
 * `EthernetServer` and `EthernetUDP` begin functions that take a Boolean
@@ -50,6 +60,14 @@ and this project adheres to
 
 ### Fixed
 * `EthernetUDP::begin` functions now call `stop()` if there was a bind error.
+* Fixed `EthernetClient::setNoDelay(flag)` to actually use the `flag` argument.
+  The function was always setting the TCP flag, regardless of the value of
+  the argument.
+* Fixed printing unknown netif name characters in some debug messages.
+* Fixed `EthernetClient::connect()` and `close()` operations to check the
+  internal connection object for NULL across `yield()` calls.
+* Fixed `lwip_strerr()` buffer size to include the potential sign.
+* Don't close the TCP pcb on error since it's already been freed.
 
 ## [0.17.0]
 
@@ -188,7 +206,7 @@ and this project adheres to
 * Changed `_write()` (stdio) to do nothing if the requested length is zero
   because that's what `fwrite()` is specified to do.
 * Updated examples to use new `operator!=()` for `IPAddress`.
-* Moved lwIP's heap to RAM2 (DMAMEM).
+* Moved lwIP's heap to RAM2 (DMAMEM) and increased `MEM_SIZE` back to 24000.
 * Updated `EthernetFrame`-related documentation to explain that the API doesn't
   receive any known Ethernet frame types, including IPv4, ARP, and IPv6
   (if enabled).
@@ -196,6 +214,7 @@ and this project adheres to
 * Changed `EthernetClass::setMACAddress(mac)` parameter to `const`.
 * Moved CRC-32 lookup table to RAM2 (DMAMEM).
 * Made const those functions which could be made const.
+* Renamed `ServerWithAddressListener` example to `ServerWithListeners`.
 * Updated examples and README to consider listeners and their relationship with
   a static IP and link detection.
 

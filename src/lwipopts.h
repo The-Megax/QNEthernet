@@ -4,8 +4,8 @@
 // lwIP configuration for QNEthernet library on Teensy 4.1.
 // This file is part of the QNEthernet library.
 
-#ifndef LWIPTEENSY_LWIPOPTS_H_
-#define LWIPTEENSY_LWIPOPTS_H_
+#ifndef QNETHERNET_LWIPOPTS_H_
+#define QNETHERNET_LWIPOPTS_H_
 
 // NO SYS
 #define NO_SYS             1
@@ -18,6 +18,8 @@
 // #define LWIP_TCPIP_CORE_LOCKING       1
 // #define LWIP_TCPIP_CORE_LOCKING_INPUT 0
 #define SYS_LIGHTWEIGHT_PROT          0
+void sys_check_core_locking(void);
+#define LWIP_ASSERT_CORE_LOCKED() sys_check_core_locking()
 
 // Memory options
 // #define MEM_LIBC_MALLOC                        0
@@ -435,4 +437,4 @@ extern void *ram_heap;
 #endif  // !MDNS_MAX_SERVICES
 // #define MDNS_DEBUG                       LWIP_DBG_OFF
 
-#endif  // LWIPTEENSY_LWIPOPTS_H_
+#endif  // QNETHERNET_LWIPOPTS_H_

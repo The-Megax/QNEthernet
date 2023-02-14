@@ -2,7 +2,7 @@
 
 # _QNEthernet_, an lwIP-Based Ethernet Library For Teensy 4.1
 
-_Version: 0.18.0-snapshot_
+_Version: 0.18.0_
 
 The _QNEthernet_ library provides Arduino-like `Ethernet` functionality for the
 Teensy 4.1. While it is mostly the same, there are a few key differences that
@@ -32,16 +32,17 @@ files provided with the lwIP release.
    9. [`IPAddress` operators](#ipaddress-operators)
    10. [`operator bool()` and `explicit`](#operator-bool-and-explicit)
 3. [How to run](#how-to-run)
+   1. [Asynchronous use is not supported](#asynchronous-use-is-not-supported)
 4. [How to write data to connections](#how-to-write-data-to-connections)
    1. [Write immediacy](#write-immediacy)
 5. [A note on the examples](#a-note-on-the-examples)
 6. [A survey of how connections (aka `EthernetClient`) work](#a-survey-of-how-connections-aka-ethernetclient-work)
-   1. [Connections and link detection](#connections-and-link-detection)
+   1. [Connections and link/interface detection](#connections-and-linkinterface-detection)
    2. [`connect()` behaviour and its return values](#connect-behaviour-and-its-return-values)
    3. [Non-blocking connection functions, `connectNoWait()`](#non-blocking-connection-functions-connectnowait)
 7. [How to use multicast](#how-to-use-multicast)
 8. [How to use listeners](#how-to-use-listeners)
-9. [How to change the number of sockets](#how-to-change-the-number-of-sockets)]
+9. [How to change the number of sockets](#how-to-change-the-number-of-sockets)
 10. [UDP receive buffering](#udp-receive-buffering)
 11. [mDNS services](#mdns-services)
 12. [DNS](#dns)
@@ -79,12 +80,13 @@ and notes:
 * The `Ethernet.begin(...)` functions don't block.
 * `EthernetServer::write(...)` functions always return the write size requested.
   This is because different clients may behave differently.
-* The examples in https://www.arduino.cc/en/Reference/EthernetServerAccept and
-  https://www.arduino.cc/en/Reference/IfEthernetClient directly contradict each
-  other with regard to what `operator bool()` means in `EthernetClient`. The
-  first example uses it as "already connected", while the second uses it as
-  "available to connect". "Connected" is the chosen concept, but different from
-  `connected()` in that it doesn't check for unread data.
+* The examples at
+  https://www.arduino.cc/reference/en/libraries/ethernet/server.accept/ and
+  https://www.arduino.cc/reference/en/libraries/ethernet/if-ethernetclient/
+  directly contradict each other with regard to what `operator bool()` means in
+  `EthernetClient`. The first example uses it as "already connected", while the
+  second uses it as "available to connect". "Connected" is the chosen concept,
+  but different from `connected()` in that it doesn't check for unread data.
 * All the Arduino-defined `Ethernet.begin(...)` functions that use the MAC
   address are deprecated.
 * The following `Ethernet` functions are deprecated and do nothing or return
@@ -143,7 +145,7 @@ and notes:
 
 _QNEthernet_ defines functions that don't exist in the Arduino API as it's
 currently defined. (See:
-[Arduino Ethernet library](https://www.arduino.cc/en/Reference/Ethernet))
+[Arduino Ethernet library](https://www.arduino.cc/reference/en/libraries/ethernet/))
 This section documents those functions.
 
 Features:
@@ -175,6 +177,8 @@ The `Ethernet` object is the main Ethernet interface.
 * `end()`: Shuts down the library, including the Ethernet clocks.
 * `hostname()`: Gets the DHCP client hostname. An empty string means that no
   hostname is set. The default is "teensy-lwip".
+* `interfaceStatus()`: Returns the network interface status, `true` for UP and
+  `false` for DOWN.
 * `isDHCPActive()`: Returns whether DHCP is active.
 * `linkState()`: Returns a `bool` indicating the link state.
 * `linkSpeed()`: Returns the link speed in Mbps.
@@ -207,7 +211,11 @@ The `Ethernet` object is the main Ethernet interface.
   * `onLinkState(cb)`: The callback is called when the link changes state, for
     example when the Ethernet cable is unplugged.
   * `onAddressChanged(cb)`: The callback is called when any IP settings have
-    changed. This might be called before the link is up if a static IP is set.
+    changed. This might be called before the link or network interface is up if
+    a static IP is set.
+  * `onInterfaceStatus(cb)`: The callback is called when the network interface
+    status changes. It is called _after_ the interface is up but _before_ the
+    interface goes down.
 * `static constexpr int maxMulticastGroups()`: Returns the maximum number of
   multicast groups.
 * `static constexpr size_t mtu()`: Returns the MTU.
@@ -484,26 +492,41 @@ here are a few steps to follow:
 3. In `setup()`, just after initializing `Serial`, set `stdPrint = &Serial`.
    This enables some lwIP output and also `printf` for your own code.
 4. You likely don't want or need to set/choose your own MAC address, so just
-   call `Ethernet.begin()` with no arguments to use DHCP and the three-argument
-   version (IP, subnet mask, gateway) to set your own address. If you really
-   want to set your own MAC address, see `setMACAddress(mac)` or one of the
-   deprecated `begin(...)` functions that takes a MAC address parameter.
+   call `Ethernet.begin()` with no arguments to use DHCP, and the three- or
+   four-argument version (IP, subnet mask, gateway[, DNS]) to set your own
+   address. If you really want to set your own MAC address, see
+   `setMACAddress(mac)` or one of the deprecated `begin(...)` functions that
+   takes a MAC address parameter.
 5. There is an `Ethernet.waitForLocalIP(timeout)` convenience function that can
    be used to wait for DHCP to supply an address because `Ethernet.begin()`
    doesn't wait. Try 10 seconds (10000 ms) and see if that works for you.
 
    Alternatively, you can use [listeners](#how-to-use-listeners) to watch for
-   address and link changes. This obviates the need for waiting and is the
-   preferred approach.
+   address, link, and network interface activity changes. This obviates the need
+   for waiting and is the preferred approach.
 
 6. `Ethernet.hardwareStatus()` always returns `EthernetOtherHardware`. This
    means that there is no reason to call this function.
 7. Most other things should be the same.
 
-Please see the examples for more things you can do with the API, including:
+Please see the examples for more things you can do with the API, including but
+not limited to:
 * Using listeners to watch for network changes,
 * Monitoring and sending raw Ethernet frames, and
 * Setting up an mDNS service.
+
+### Asynchronous use is not supported
+
+Asynchronous use of _QNEthernet_ is not currently supported. This includes ISR
+approaches and multi-threading approaches.
+
+First, the underlying lwIP stack must be configured and used a certain way in
+order to provide asynchronous support. _QNEthernet_ does not configure lwIP for
+this. Second, the _QNEthernet_ API, the layer on top of lwIP, isn't designed for
+asynchronous use.
+
+Note that there is a group of libraries that claims to use _QNEthernet_ and that
+claims to provide asynchronous support. Neither of these claims is true.
 
 ## How to write data to connections
 
@@ -729,16 +752,18 @@ Some options:
    (`connected()` or `operator bool()`). The data will just run out after
    connection-closed and after the buffers are empty.
 
-### Connections and link detection
+### Connections and link/interface detection
 
-A link must be present before a connection can be made. Either call
-`Ethernet.waitForLink(timeout)` or check the link state before attempting to
-connect. Which approach you use will depend on how your code is structured or
-intended to be used.
+A link and active network interface must be present before a connection can be
+made. Either call `Ethernet.waitForLink(timeout)` or check the link state or
+network interface status before attempting to connect. Which approach you use
+will depend on how your code is structured or intended to be used.
 
 Be aware when using a listener approach to start or stop services that it's
 possible, when setting a static IP, for the _address-changed_ callback to be
-called before the link is up.
+called before the link or network interface is up.
+
+Note that this section also applies to the DNS client.
 
 ### `connect()` behaviour and its return values
 
@@ -805,7 +830,7 @@ The lwIP stack keeps track of a group "use count". This means:
 
 ## How to use listeners
 
-Instead of waiting for certain state at system start, for example _link-up_ or
+Instead of waiting for certain states at system start, for example _link-up_ or
 _address-changed_, it's possible to watch for state changes using listeners, and
 then act on those state changes. This will make your application more robust and
 responsive to state changes during program operation.
@@ -814,22 +839,37 @@ The relevant functions are (see the [`Ethernet`](#ethernet) section for further
 descriptions):
 1. `Ethernet.onLinkState(cb)`
 2. `Ethernet.onAddressChanged(cb)`
+3. `Ethernet.onInterfaceStatus(cb)`
 
-_Link-state_ occurs when an Ethernet link is detected or lost.
+_Link-state_ events occur when an Ethernet link is detected or lost.
 
 _Address-changed_ events occur when the IP address changes, but its effects are
-a little more subtle. When setting an address via DHCP, the link must already be
-up in order to receive the information. However, when setting a static IP
-address, the event may occur when the link is not yet up. This means that if a
-connection is attempted when it is detected that the address is valid, the
-attempt will fail.
+a little more subtle. When setting an address via DHCP, the link and network
+interface must already be up in order to receive the information. However, when
+setting a static IP address, the event may occur before the link or network
+interface is up. This means that if a connection or DNS lookup is attempted when
+it is detected that the address is valid, the attempt will fail.
+
+_Interface-status_ events happen when the network interface comes up or goes
+down. No network operations can happen before the network interface is up. For
+example, when setting a static IP address, the _address-changed_ event may occur
+before the network interface has come up. This means that, for example, any
+connection attempts or DNS lookup attempts will fail.
 
 It is suggested, therefore, that when taking an action based on an
-_address-changed_ event, the link state is checked in addition.
+_address-changed_ event, the link state and network interface status are checked
+in addition.
 
-Servers, on the other hand, can be brought up even when there's no link.
+Servers, on the other hand, can be brought up even when there's no link or
+active network interface.
 
-See: [Connections and link detection](#connections-and-link-detection)
+In summary, no network operations can be done before all three of _link-up_,
+_address_changed-to-valid_, and _interface-up_ occur.
+
+Last, no network tasks should be performed inside the listeners. Instead, set a
+flag and then process that flag somewhere in the main loop.
+
+See: [Connections and link/interface detection](#connections-and-linkinterface-detection)
 
 ## How to change the number of sockets
 
@@ -975,8 +1015,8 @@ over Ethernet. It uses 01-1B-19-00-00-00 for forwardable frames and
 01-80-C2-00-00-0E for non-forwardable frames. See
 [PTP Message Transport](https://en.wikipedia.org/wiki/Precision_Time_Protocol#Message_transport)
 
-To disable raw frame support, define the `QNETHERNET_DISABLE_RAW_FRAME_SUPPORT`
-macro. This will save some space.
+To enable raw frame support, define the `QNETHERNET_ENABLE_RAW_FRAME_SUPPORT`
+macro. This will use some space.
 
 ### Promiscuous mode
 
@@ -1091,12 +1131,12 @@ tests have been done.]_
 
 There are several macros that can be used to configure the system:
 
-| Macro                                  | Description                         | Link                                        |
-| -------------------------------------- | ----------------------------------- | ------------------------------------------- |
-| `QNETHERNET_BUFFERS_IN_RAM1`           | Put the RX and TX buffers into RAM1 | [Notes on RAM1 usage](#notes-on-ram1-usage) |
-| `QNETHERNET_DISABLE_RAW_FRAME_SUPPORT` | Disable raw frame support           | [Raw Ethernet Frames](#raw-ethernet-frames) |
-| `QNETHERNET_PROMISCUOUS_MODE`          | Enable promiscuous mode             | [Promiscuous mode](#promiscuous-mode)       |
-| `QNETHERNET_WEAK_WRITE`                | Allow overriding `_write()`         | [stdio](#stdio)                             |
+| Macro                                 | Description                         | Link                                        |
+| ------------------------------------- | ----------------------------------- | ------------------------------------------- |
+| `QNETHERNET_BUFFERS_IN_RAM1`          | Put the RX and TX buffers into RAM1 | [Notes on RAM1 usage](#notes-on-ram1-usage) |
+| `QNETHERNET_ENABLE_RAW_FRAME_SUPPORT` | Enable raw frame support            | [Raw Ethernet Frames](#raw-ethernet-frames) |
+| `QNETHERNET_PROMISCUOUS_MODE`         | Enable promiscuous mode             | [Promiscuous mode](#promiscuous-mode)       |
+| `QNETHERNET_WEAK_WRITE`               | Allow overriding `_write()`         | [stdio](#stdio)                             |
 
 ### Redefining macros in `lwipopts.h`
 
@@ -1141,7 +1181,8 @@ _QNEthernet_ library.
 9. [Zero-length UDP packets](#parsepacket-return-values)
 10. [UDP](#udp-receive-buffering) and [raw frame](#raw-frame-receive-buffering)
     receive buffering
-11. [Listeners](#how-to-use-listeners) to watch link and address state
+11. [Listeners](#how-to-use-listeners) to watch link, network interface, and
+    address state
 12. IPv6-capable with some additions
 13. IEEE1588-capable with some additions
 14. [Client shutdown options](#ethernetclient): _close_ (start close process
@@ -1203,7 +1244,7 @@ Other conventions are adopted from Bjarne Stroustrup's and Herb Sutter's
   https://github.com/ddrown/teensy41_ethernet
 * Tino Hernandez's (vjmuzik) FNET-based NativeEthernet library:
   https://forum.pjrc.com/threads/60857-T4-1-Ethernet-Library
-* [Arduino Ethernet library](https://www.arduino.cc/en/Reference/Ethernet)
+* [Arduino Ethernet library](https://www.arduino.cc/reference/en/libraries/ethernet/)
 
 ---
 

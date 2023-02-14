@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (c) 2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2022-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // IPerfServer implements an iPerf server for TCP traffic.
@@ -156,7 +156,7 @@ struct ConnectionState {
 };
 
 // -------------------------------------------------------------------
-//  Main program
+//  Main Program
 // -------------------------------------------------------------------
 
 // Digits buffer.
@@ -191,7 +191,13 @@ void setup() {
 
   // Listen for link changes
   Ethernet.onLinkState([](bool state) {
-    printf("[Ethernet] Link %s\r\n", state ? "ON" : "OFF");
+    if (state) {
+      printf("[Ethernet] Link ON, %d Mbps, %s duplex\r\n",
+             Ethernet.linkSpeed(),
+             Ethernet.linkIsFullDuplex() ? "Full" : "Half");
+    } else {
+      printf("[Ethernet] Link OFF\r\n");
+    }
   });
 
   // Listen for address changes
@@ -260,7 +266,8 @@ void addressChanged(bool hasIP) {
     } else {
       printf("Stopping server...");
       fflush(stdout);  // Print what we have so far if line buffered
-      printf("%s\r\n", server.end() ? "done." : "FAILED!");
+      server.end();
+      printf("done.\r\n");
     }
   }
 }

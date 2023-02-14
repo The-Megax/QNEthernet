@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: (c) 2021-2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2021-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // QNEthernetUDP.h defines the UDP interface.
 // This file is part of the QNEthernet library.
 
-#ifndef QNE_ETHERNETUDP_H_
-#define QNE_ETHERNETUDP_H_
+#ifndef QNETHERNET_ETHERNETUDP_H_
+#define QNETHERNET_ETHERNETUDP_H_
 
 // C++ includes
 #include <cstddef>
@@ -168,4 +168,4 @@ class EthernetUDP : public UDP {
 }  // namespace network
 }  // namespace qindesign
 
-#endif  // QNE_ETHERNETUDP_H_
+#endif  // QNETHERNET_ETHERNETUDP_H_

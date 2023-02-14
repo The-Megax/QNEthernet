@@ -1,13 +1,13 @@
-// SPDX-FileCopyrightText: (c) 2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2022-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // QNEthernetFrame.h defines the raw frame interface.
 // This file is part of the QNEthernet library.
 
-#ifndef QNE_ETHERNETFRAME_H_
-#define QNE_ETHERNETFRAME_H_
+#ifndef QNETHERNET_ETHERNETFRAME_H_
+#define QNETHERNET_ETHERNETFRAME_H_
 
-#ifndef QNETHERNET_DISABLE_RAW_FRAME_SUPPORT
+#ifdef QNETHERNET_ENABLE_RAW_FRAME_SUPPORT
 
 // C++ includes
 #include <cstddef>
@@ -159,6 +159,6 @@ class EthernetFrameClass final : public Stream {
 }  // namespace network
 }  // namespace qindesign
 
-#endif  // !QNETHERNET_DISABLE_RAW_FRAME_SUPPORT
+#endif  // QNETHERNET_ENABLE_RAW_FRAME_SUPPORT
 
-#endif  // QNE_ETHERNETFRAME_H_
+#endif  // QNETHERNET_ETHERNETFRAME_H_

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (c) 2021-2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2021-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // ServerWithListeners demonstrates how to use listeners to start and
@@ -81,7 +81,7 @@ struct ClientState {
 };
 
 // --------------------------------------------------------------------------
-//  Program state
+//  Program State
 // --------------------------------------------------------------------------
 
 // Keeps track of what and where belong to whom.
@@ -91,7 +91,7 @@ std::vector<ClientState> clients;
 EthernetServer server{kServerPort};
 
 // --------------------------------------------------------------------------
-//  Main program
+//  Main Program
 // --------------------------------------------------------------------------
 
 // Forward declarations
@@ -147,7 +147,7 @@ void setup() {
     // example, servers, SNTP clients, and other sub-programs that
     // need to know whether to stop/start/restart/etc
     // Note: When setting a static IP, the address will be set but a
-    //       link might not yet exist
+    //       link or active network interface might not yet exist
     tellServer(hasIP);
   });
 
@@ -205,7 +205,8 @@ void tellServer(bool hasIP) {
     } else {
       printf("Stopping server...");
       fflush(stdout);  // Print what we have so far if line buffered
-      printf("%s\r\n", server.end() ? "done." : "FAILED!");
+      server.end();
+      printf("done.\r\n");
     }
   }
 }
@@ -279,7 +280,7 @@ void loop() {
         IPAddress ip = state.client.remoteIP();
         printf("Client shutdown timeout: %u.%u.%u.%u\r\n",
                ip[0], ip[1], ip[2], ip[3]);
-        state.client.stop();
+        state.client.close();
         state.closed = true;
         continue;
       }
@@ -287,7 +288,7 @@ void loop() {
       if (millis() - state.lastRead >= kClientTimeout) {
         IPAddress ip = state.client.remoteIP();
         printf("Client timeout: %u.%u.%u.%u\r\n", ip[0], ip[1], ip[2], ip[3]);
-        state.client.stop();
+        state.client.close();
         state.closed = true;
         continue;
       }

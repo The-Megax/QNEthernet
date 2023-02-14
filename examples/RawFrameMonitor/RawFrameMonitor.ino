@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (c) 2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2022-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // RawFrameMonitor prints all unknown raw Ethernet frames. Known frame types
@@ -11,6 +11,9 @@
 // address or to a subscribed multicast address, the destination address must be
 // tagged as "allowed".
 // See: Ethernet.setMACAddressAllowed(mac, flag)
+//
+// In order to use this example, define the QNETHERNET_ENABLE_RAW_FRAME_SUPPORT
+// macro.
 //
 // This file is part of the QNEthernet library.
 
@@ -123,7 +126,7 @@ void loop() {
   if (tag > EthernetFrame.maxFrameLen()) {
     printf(" type=%04Xh\r\n", tag);
   } else {
-    printf(" length=%d\r\n", tag);
+    printf(" length=%u\r\n", tag);
     payloadEnd = std::min(payloadStart + tag, payloadEnd);
   }
 

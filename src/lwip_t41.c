@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (c) 2021-2022 Shawn Silverman <shawn@pobox.com>
+// SPDX-FileCopyrightText: (c) 2021-2023 Shawn Silverman <shawn@pobox.com>
 // SPDX-License-Identifier: MIT
 
 // lwip_t41.c contains the Teensy 4.1 Ethernet interface implementation.
@@ -11,6 +11,7 @@
 #include "lwip_t41.h"
 
 // C includes
+#include <stdatomic.h>
 #include <string.h>
 
 #include <core_pins.h>
@@ -144,8 +145,8 @@ static BUFFER_DMAMEM uint8_t rxbufs[RX_SIZE * BUF_SIZE] __attribute__((aligned(6
 static BUFFER_DMAMEM uint8_t txbufs[TX_SIZE * BUF_SIZE] __attribute__((aligned(64)));
 volatile static enetbufferdesc_t *p_rxbd = &rx_ring[0];
 volatile static enetbufferdesc_t *p_txbd = &tx_ring[0];
-static struct netif t41_netif;
-static volatile uint32_t rx_ready;
+static struct netif t41_netif = { .name = {'e', '0'} };
+static atomic_flag rx_not_avail = ATOMIC_FLAG_INIT;
 
 // PHY status, polled
 static bool linkSpeed10Not100 = false;
@@ -160,42 +161,50 @@ void enet_isr();
 //  PHY_MDIO
 // --------------------------------------------------------------------------
 
-// Read a PHY register (using MDIO & MDC signals).
-uint16_t mdio_read(int phyaddr, int regaddr) {
+// PHY register definitions
+#define PHY_REGCR  0x0D
+#define PHY_ADDAR  0x0E
+#define PHY_LEDCR  0x18
+#define PHY_RCSR   0x17
+#define PHY_BMSR   0x01
+#define PHY_PHYSTS 0x10
+
+// Reads a PHY register (using MDIO & MDC signals).
+uint16_t mdio_read(int regaddr) {
   ENET_MMFR = ENET_MMFR_ST(1) | ENET_MMFR_OP(2) | ENET_MMFR_TA(2) |
-              ENET_MMFR_PA(phyaddr) | ENET_MMFR_RA(regaddr);
+              ENET_MMFR_PA(0/*phyaddr*/) | ENET_MMFR_RA(regaddr);
   // int count=0;
   while ((ENET_EIR & ENET_EIR_MII) == 0) {
     // count++; // wait
   }
   // print("mdio read waited ", count);
   uint16_t data = ENET_MMFR;
-  ENET_EIR = ENET_EIR_MII;
+  ENET_EIR |= ENET_EIR_MII;
   // printhex("mdio read:", data);
   return data;
 }
 
-// Write a PHY register (using MDIO & MDC signals).
-void mdio_write(int phyaddr, int regaddr, uint16_t data) {
+// Writes a PHY register (using MDIO & MDC signals).
+void mdio_write(int regaddr, uint16_t data) {
   ENET_MMFR = ENET_MMFR_ST(1) | ENET_MMFR_OP(1) | ENET_MMFR_TA(2) |
-              ENET_MMFR_PA(phyaddr) | ENET_MMFR_RA(regaddr) |
+              ENET_MMFR_PA(0/*phyaddr*/) | ENET_MMFR_RA(regaddr) |
               ENET_MMFR_DATA(data);
   // int count = 0;
   while ((ENET_EIR & ENET_EIR_MII) == 0) {
     // count++;  // wait
   }
-  ENET_EIR = ENET_EIR_MII;
+  ENET_EIR |= ENET_EIR_MII;
   // print("mdio write waited ", count);
   // printhex("mdio write :", data);
 }
 
 // --------------------------------------------------------------------------
-//  Low-level
+//  Low-Level
 // --------------------------------------------------------------------------
 
 static void t41_low_level_init() {
   CCM_CCGR1 |= CCM_CCGR1_ENET(CCM_CCGR_ON);
-  // Configure PLL6 for 50 MHz, pg 1118 (Rev. 2, 1173 Rev. 1)
+  // Configure PLL6 for 50 MHz, pg 1112 (Rev. 3, 1118 Rev. 2, 1173 Rev. 1)
   CCM_ANALOG_PLL_ENET_SET = CCM_ANALOG_PLL_ENET_BYPASS;
   CCM_ANALOG_PLL_ENET_CLR = CCM_ANALOG_PLL_ENET_BYPASS_CLK_SRC(3) |
                             CCM_ANALOG_PLL_ENET_ENET2_DIV_SELECT(3) |
@@ -212,7 +221,7 @@ static void t41_low_level_init() {
   CCM_ANALOG_PLL_ENET_CLR = CCM_ANALOG_PLL_ENET_BYPASS;
   // printf("PLL6 = %08" PRIX32 "h (should be 80202001h)\n", CCM_ANALOG_PLL_ENET);
 
-  // Configure REFCLK to be driven as output by PLL6, pg 329 (Rev. 2, 326 Rev. 1)
+  // Configure REFCLK to be driven as output by PLL6, pg 325 (Rev. 3, 328 Rev. 2, 326 Rev. 1)
   CLRSET(IOMUXC_GPR_GPR1,
          IOMUXC_GPR_GPR1_ENET1_CLK_SEL | IOMUXC_GPR_GPR1_ENET_IPG_CLK_S_EN,
          IOMUXC_GPR_GPR1_ENET1_TX_CLK_DIR);
@@ -231,31 +240,31 @@ static void t41_low_level_init() {
   IOMUXC_SW_PAD_CTL_PAD_GPIO_B1_08 = RMII_PAD_INPUT_PULLUP;
   IOMUXC_SW_PAD_CTL_PAD_GPIO_B1_09 = RMII_PAD_INPUT_PULLUP;
   IOMUXC_SW_PAD_CTL_PAD_GPIO_B1_10 = RMII_PAD_CLOCK;
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_05 = 3;  // RXD1    B1_05 Alt3, pg 529 (Rev. 2, 525 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_04 = 3;  // RXD0    B1_04 Alt3, pg 528 (Rev. 2, 524 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_10 = 6 | 0x10;  // REFCLK    B1_10 Alt6, pg 534 (Rev. 2, 530 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_11 = 3;  // RXER    B1_11 Alt3, pg 535 (Rev. 2, 531 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_06 = 3;  // RXEN    B1_06 Alt3, pg 530 (Rev. 2, 526 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_09 = 3;  // TXEN    B1_09 Alt3, pg 533 (Rev. 2, 529 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_07 = 3;  // TXD0    B1_07 Alt3, pg 531 (Rev. 2, 527 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_08 = 3;  // TXD1    B1_08 Alt3, pg 532 (Rev. 2, 528 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_15 = 0;  // MDIO    B1_15 Alt0, pg 539 (Rev. 2, 535 Rev. 1)
-  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_14 = 0;  // MDC     B1_14 Alt0, pg 538 (Rev. 2, 534 Rev. 1)
-  IOMUXC_ENET_MDIO_SELECT_INPUT = 2;     // GPIO_B1_15_ALT0, pg 796 (Rev. 2, 792 Rev. 1)
-  IOMUXC_ENET0_RXDATA_SELECT_INPUT = 1;  // GPIO_B1_04_ALT3, pg 796 (Rev. 2, 792 Rev. 1)
-  IOMUXC_ENET1_RXDATA_SELECT_INPUT = 1;  // GPIO_B1_05_ALT3, pg 797 (Rev. 2, 793 Rev. 1)
-  IOMUXC_ENET_RXEN_SELECT_INPUT = 1;     // GPIO_B1_06_ALT3, pg 798 (Rev. 2, 794 Rev. 1)
-  IOMUXC_ENET_RXERR_SELECT_INPUT = 1;    // GPIO_B1_11_ALT3, pg 799 (Rev. 2, 795 Rev. 1)
-  IOMUXC_ENET_IPG_CLK_RMII_SELECT_INPUT = 1;  // GPIO_B1_10_ALT6, pg 795 (Rev. 2, 791 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_05 = 3;  // RXD1    B1_05 Alt3, pg 525 (Rev. 3, 529 Rev. 2, 525 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_04 = 3;  // RXD0    B1_04 Alt3, pg 524 (Rev. 3, 528 Rev. 2, 524 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_10 = 6 | 0x10;  // REFCLK    B1_10 Alt6, pg 530 (Rev. 3, 534 Rev. 2, 530 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_11 = 3;  // RXER    B1_11 Alt3, pg 531 (Rev. 3, 535 Rev. 2, 531 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_06 = 3;  // RXEN    B1_06 Alt3, pg 526 (Rev. 3, 530 Rev. 2, 526 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_09 = 3;  // TXEN    B1_09 Alt3, pg 529 (Rev. 3, 533 Rev. 2, 529 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_07 = 3;  // TXD0    B1_07 Alt3, pg 527 (Rev. 3, 531 Rev. 2, 527 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_08 = 3;  // TXD1    B1_08 Alt3, pg 528 (Rev. 3, 532 Rev. 2, 528 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_15 = 0;  // MDIO    B1_15 Alt0, pg 535 (Rev. 3, 539 Rev. 2, 535 Rev. 1)
+  IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_14 = 0;  // MDC     B1_14 Alt0, pg 534 (Rev. 3, 538 Rev. 2, 534 Rev. 1)
+  IOMUXC_ENET_MDIO_SELECT_INPUT = 2;     // GPIO_B1_15_ALT0, pg 791 (Rev. 3, 795 Rev. 2, 792 Rev. 1)
+  IOMUXC_ENET0_RXDATA_SELECT_INPUT = 1;  // GPIO_B1_04_ALT3, pg 792 (Rev. 3, 796 Rev. 2, 792 Rev. 1)
+  IOMUXC_ENET1_RXDATA_SELECT_INPUT = 1;  // GPIO_B1_05_ALT3, pg 793 (Rev. 3, 797 Rev. 2, 793 Rev. 1)
+  IOMUXC_ENET_RXEN_SELECT_INPUT = 1;     // GPIO_B1_06_ALT3, pg 794 (Rev. 3, 798 Rev. 2, 794 Rev. 1)
+  IOMUXC_ENET_RXERR_SELECT_INPUT = 1;    // GPIO_B1_11_ALT3, pg 795 (Rev. 3, 799 Rev. 2, 795 Rev. 1)
+  IOMUXC_ENET_IPG_CLK_RMII_SELECT_INPUT = 1;  // GPIO_B1_10_ALT6, pg 791 (Rev. 3, 795 Rev. 2, 791 Rev. 1)
   delayMicroseconds(2);
   GPIO7_DR_SET = (1 << 14);  // Start PHY chip
   ENET_MSCR = ENET_MSCR_MII_SPEED(9);
   delayMicroseconds(5);
 
   // LEDCR offset 0x18, set LED_Link_Polarity, pg 62
-  mdio_write(0, 0x18, 0x0280);  // LED shows link status, active high
+  mdio_write(PHY_LEDCR, 0x0280);  // LED shows link status, active high
   // RCSR offset 0x17, set RMII_Clock_Select, pg 61
-  mdio_write(0, 0x17, 0x0081);  // Config for 50 MHz clock input
+  mdio_write(PHY_RCSR, 0x0081);  // Config for 50 MHz clock input
 
   memset(rx_ring, 0, sizeof(rx_ring));
   memset(tx_ring, 0, sizeof(tx_ring));
@@ -351,6 +360,10 @@ static void t41_low_level_init() {
   attachInterruptVector(IRQ_ENET, enet_isr);
   NVIC_ENABLE_IRQ(IRQ_ENET);
 
+  // Last few things to do
+  ENET_EIR = 0;  // Clear any pending interrupts before setting ETHEREN
+  atomic_flag_test_and_set(&rx_not_avail);
+
   // Last, enable the Ethernet MAC
   ENET_ECR = 0x70000000 | ENET_ECR_DBSWP | ENET_ECR_EN1588 | ENET_ECR_ETHEREN;
 
@@ -359,7 +372,7 @@ static void t41_low_level_init() {
   ENET_TDAR = ENET_TDAR_TDAR;
 
   // phy soft reset
-  // phy_mdio_write(0, 0x00, 1 << 15);
+  // phy_mdio_write(PHY_BMCR, 1 << 15);
 
   isInitialized = true;
 }
@@ -473,8 +486,6 @@ static err_t t41_netif_init(struct netif *netif) {
 #if LWIP_NETIF_HOSTNAME
   netif_set_hostname(netif, NULL);
 #endif
-  netif->name[0] = 'e';
-  netif->name[1] = '0';
 
   t41_low_level_init();
 
@@ -505,9 +516,9 @@ static inline volatile enetbufferdesc_t *rxbd_next() {
 }
 
 void enet_isr() {
-  if (ENET_EIR & ENET_EIR_RXF) {
-    ENET_EIR = ENET_EIR_RXF;
-    rx_ready = 1;
+  if ((ENET_EIR & ENET_EIR_RXF) != 0) {
+    ENET_EIR |= ENET_EIR_RXF;
+    atomic_flag_clear(&rx_not_avail);
   }
 }
 
@@ -515,14 +526,14 @@ static inline void check_link_status() {
   if (!isInitialized) {
     return;
   }
-  uint16_t status = mdio_read(0, 0x01);
+  uint16_t status = mdio_read(PHY_BMSR);
   uint8_t is_link_up = !!(status & (1 << 2));
   if (netif_is_link_up(&t41_netif) != is_link_up) {
     if (is_link_up) {
       netif_set_link_up(&t41_netif);
 
       // TODO: Should we read the speed only at link UP or every time?
-      status = mdio_read(0, 0x10);
+      status = mdio_read(PHY_PHYSTS);
       linkSpeed10Not100 = ((status & (1 << 1)) != 0);
       linkIsFullDuplex  = ((status & (1 << 2)) != 0);
     } else {
@@ -550,7 +561,7 @@ static err_t multicast_filter(struct netif *netif, const ip4_addr_t *group,
 #endif  // !QNETHERNET_PROMISCUOUS_MODE
 
 // --------------------------------------------------------------------------
-//  Public interface
+//  Public Interface
 // --------------------------------------------------------------------------
 
 void enet_getmac(uint8_t *mac) {
@@ -635,7 +646,7 @@ void enet_deinit() {
   while ((ENET_EIR & ENET_EIR_GRA) == 0) {
     // Wait until it's gracefully stopped
   }
-  ENET_EIR = ENET_EIR_GRA;
+  ENET_EIR |= ENET_EIR_GRA;
 
   // Disable the Ethernet MAC
   // Note: All interrupts are cleared when Ethernet is reinitialized,
@@ -673,10 +684,9 @@ static void enet_input(struct pbuf *p_frame) {
 void enet_proc_input(void) {
   struct pbuf *p;
 
-  if (!rx_ready) {
+  if (atomic_flag_test_and_set(&rx_not_avail)) {
     return;
   }
-  rx_ready = 0;
   while ((p = enet_rx_next()) != NULL) {
     enet_input(p);
   }
@@ -720,7 +730,7 @@ bool enet_output_frame(const uint8_t *frame, size_t len) {
 }
 
 // --------------------------------------------------------------------------
-//  MAC address filtering
+//  MAC Address Filtering
 // --------------------------------------------------------------------------
 
 #ifndef QNETHERNET_PROMISCUOUS_MODE
